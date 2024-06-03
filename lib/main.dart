@@ -1,14 +1,25 @@
 import 'dart:io';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:just_audio/just_audio.dart';
 
 CacheManager? cacheManager;
 AudioPlayer? audioPlayer;
+_TestAudioHandler? audioHandler;
 const Duration targetDuration = Duration(minutes: 30);
 
-void main() {
+Future<void> main() async {
+  audioHandler = await AudioService.init(
+      builder: () => _TestAudioHandler(),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: "com.corey.just_audio_bug.audio",
+        androidNotificationChannelName: "Audio playback",
+      ));
+  audioHandler!.playbackState.listen((value) {
+    print("playbackState: $value");
+  });
   runApp(const MyApp());
 }
 
@@ -75,6 +86,8 @@ class _MyHomePageState extends State<MyHomePage> {
       _counter++;
       if (_counter == 1) {
         _startPlayingAudio();
+      } else if (_counter > 2) {
+        audioHandler?.play();
       }
     });
   }
@@ -157,7 +170,8 @@ Future<AudioPlayer> _startPlayingAudio() async {
       children: audioSources,
     ),
   );
-  await audioPlayer!.play();
+  audioHandler?.play();
+
   return audioPlayer!;
 }
 
@@ -176,4 +190,42 @@ Future<File> getAudioMP3File(CacheManager cacheManager) async {
       "https://d1e3n610ftu5j8.cloudfront.net/mechanical-clothes-washer.mp3";
   final File file = await cacheManager.getSingleFile(url);
   return file;
+}
+
+class _TestAudioHandler extends BaseAudioHandler {
+  // The most common callbacks:
+  @override
+  Future<void> play() async {
+    print("play handler");
+    audioPlayer?.play();
+    playbackState.add(playbackState.value.copyWith(
+      controls: [MediaControl.pause],
+      processingState: AudioProcessingState.ready,
+      playing: true,
+    ));
+  }
+
+  @override
+  Future<void> pause() async {
+    print("pause handler");
+    playbackState.add(playbackState.value.copyWith(
+      controls: [
+        MediaControl.play,
+      ],
+      processingState: AudioProcessingState.ready,
+      playing: true,
+    ));
+    audioPlayer?.pause();
+  }
+
+  @override
+  Future<void> stop() async {
+    print("stop handler");
+    playbackState.add(playbackState.value.copyWith(
+      controls: [MediaControl.play],
+      processingState: AudioProcessingState.completed,
+      playing: false,
+    ));
+    audioPlayer?.stop();
+  }
 }
